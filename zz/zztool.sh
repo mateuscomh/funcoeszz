@@ -139,6 +139,10 @@ zztool ()
 			test -n "$erro" && echo "Data inválida '$1', deve ser dd/mm/aaaa" >&2
 			return 1
 		;;
+
+		# IMPORTANTE
+		# Em vez de adicionar outras ferramentas testa_* aqui, confira a zztestar.
+
 		multi_stdin)
 			# Mostra na tela os argumentos *ou* a STDIN, nesta ordem
 			# Útil para funções/comandos aceitarem dados das duas formas:
@@ -169,7 +173,7 @@ zztool ()
 		list2lines)
 			# Limpa lista dos argumentos *ou* a STDIN e retorna um item por linha
 			# Lista: um dois três | um, dois, três | um;dois;três
-			zztool multi_stdin "$@" | 
+			zztool multi_stdin "$@" |
 				sed 's/[;,]/ /g' |
 				tr -s '\t' ' ' |
 				tr ' ' '\n' |
@@ -181,6 +185,23 @@ zztool ()
 			grep . |
 				tr '\n' ' ' |
 				sed 's/^ // ; s/ $//'
+		;;
+		lines2json)
+			# Recebe linhas em STDIN e converte para um array JSON
+			sed '
+				# Escapa possíveis \ e " na linha: a\b"c -> a\\b\"c
+				s/[\"]/\\&/g
+
+				# Coloca aspas ao redor da linha: foo -> "foo"
+				s/.*/"&"/
+
+				# Coloca a vírgula no final (exceto na última linha): "foo" -> "foo",
+				$! s/$/,/
+
+				# Coloca [ e ] na primeira e última linha, respectivamente
+				1 s/^/[/
+				$ s/$/]/
+			'
 		;;
 		endereco_sed)
 			# Formata um texto para ser usado como endereço no sed.
@@ -205,20 +226,10 @@ zztool ()
 			echo "$LC_ALL $LC_CTYPE $LANG" | grep -i utf >/dev/null
 		;;
 		texto_em_iso)
-			if test $ZZUTF = 1
-			then
-				iconv -f iso-8859-1 -t utf-8 /dev/stdin
-			else
-				cat -
-			fi
+			iconv -f iso-8859-1 -t utf-8 /dev/stdin
 		;;
 		texto_em_utf8)
-			if test $ZZUTF != 1
-			then
-				iconv -f utf-8 -t iso-8859-1 /dev/stdin
-			else
-				cat -
-			fi
+			cat -
 		;;
 		mktemp)
 			# Cria um arquivo temporário de nome único, usando $1.

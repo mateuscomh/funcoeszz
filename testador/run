@@ -8,26 +8,22 @@
 #   ./run local                   # run all local tests (no internet)
 #
 # See README.md file for instructions.
+# See util/lista.sh for a list of available function groups.
 
-script_dir=$(dirname "$0")
-zz_root=$(cd "$script_dir"; cd ..; pwd)  # handles absolute and relative
+tests_dir=$(dirname "$0")
+# shellcheck disable=SC2164,SC2103
+zz_root=$(cd "$tests_dir"; cd ..; pwd)  # handles absolute and relative
 tmp='./run.tmp'
 tester='bash clitest'
 
-cd "$script_dir"
+cd "$tests_dir" || exit
 
-# For Travis exceptions, see https://github.com/funcoeszz/funcoeszz/issues/355
-internet=$("$zz_root"/util/metadata.sh tags | awk '/^zz.* internet/{sub(/zz\//,"");printf $1 "\n"}')
-internet_travis=$(echo "$internet" | grep -E -v '^zz(distro|linux|chavepgp)\.sh$')
-all=$(ls -1 zz*.sh)
-no_internet=$(echo "$all" | grep -F -v -x -f <(echo "$internet"))
-
-# Check requirements
+# Download clitest if necessary
 $tester -V > /dev/null || {
-	printf '%s\n' "Ops... Não achei o programa testador: clitest"
-	printf '%s\n' 'Baixe-o deste endereço:'
-	printf '%s\n' 'https://raw.github.com/aureliojargas/clitest/master/clitest'
-	exit 1
+	make -C .. testador/clitest || {
+		printf '%s\n' 'Erro ao instalar o programa testador (clitest)'
+		exit 1
+	}
 }
 
 # Create temporary file with ZZ init in full paths
@@ -38,38 +34,44 @@ ZZOFF='' . "$zz_root"/funcoeszz \\
 	--dir  "$zz_root"/zz
 EOF
 
+case "$1" in
+	core | funcoeszz.md)
+		# inject $zz_root into the test env
+		echo "zz_root=$zz_root" > $tmp
+
+		tests=funcoeszz.md
+	;;
+	*)
+		# Is $1 a special identifier for a group of functions?
+		# Examples: all, internet, local
+		function_names=$("$zz_root/util/lista.sh" "$1" 2>/dev/null || true)
+
+		if test -n "$function_names"
+		then
+			# Ok, we have a list of available functions based on the
+			# user argument. Now we need to filter that list to contain
+			# only the functions that have actual tests. Also, the
+			# resulting list must be filenames (zzfoo.sh), not function
+			# names (zzfoo).
+			all_test_files=$(ls zz*.sh)  # we're already in the test dir
+			tests=$(
+				echo "$function_names" |
+					sed 's/$/.sh/' |
+					grep -F -x -f <(echo "$all_test_files")
+			)
+		else
+			# User argument is unknown. Maybe it contains test
+			# filenames. Let's try them directly.
+			tests="$*"  # our filenames have no spaces
+		fi
+	;;
+esac
+
+# Run the tests
 # Note: To remove the dots ........ change 'dot' to 'none'
-if test "internet" = "$1"
-then
-	# Test internet based files
-	$tester --progress dot --pre-flight ". $tmp" $internet
-	exitcode=$?
-elif test "internet_travis" = "$1"
-then
-	# Test internet based files
-	$tester --progress dot --pre-flight ". $tmp" $internet_travis
-	exitcode=$?
-elif test "local" = "$1"
-then
-	# Tests that do not need internet
-	$tester --progress dot --pre-flight ". $tmp" $no_internet
-	exitcode=$?
-elif test "funcoeszz.md" = "$1"
-then
-	# Test the core: funcoeszz
-	echo "zz_root=$zz_root" > $tmp  # inject $zz_root into the test env
-	$tester --progress dot --pre-flight ". $tmp" funcoeszz.md
-	exitcode=$?
-elif test $# -gt 0
-then
-	# Test specific file(s)
-	$tester --progress dot --pre-flight ". $tmp" "$@"
-	exitcode=$?
-else
-	# Test all files
-	$tester --progress dot --pre-flight ". $tmp" zz*.sh
-	exitcode=$?
-fi
+# shellcheck disable=SC2086
+$tester --progress dot --pre-flight ". $tmp" $tests
+exitcode=$?
 
 rm "$tmp"
 exit "$exitcode"

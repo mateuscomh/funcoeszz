@@ -12,7 +12,6 @@
 # CHANGELOG  : http://www.funcoeszz.net/changelog.html
 #
 ZZVERSAO=dev
-ZZUTF=1
 #
 ##############################################################################
 #
@@ -56,15 +55,51 @@ ZZTMPDIR_DFT="${TMPDIR:-/tmp}"    # diretório temporário
 # Não altere nada aqui.
 #
 #
+
 ### Truques para descobrir a localização deste arquivo no sistema
-#
-# Se a chamada foi pelo executável, o arquivo é o $0.
-# Senão, tenta usar a variável de ambiente ZZPATH, definida pelo usuário.
-# Caso não exista, usa o local padrão ZZPATH_DFT.
-# Finalmente, força que ZZPATH seja uma rota absoluta.
-#
-test "${0##*/}" = 'bash' -o "${0#-}" != "$0" || ZZPATH="$0"
+
+# 1. Resolução do parâmetro $0:
+# https://github.com/aureliojargas/livro-shell/issues/2#issuecomment-830872380
+
+# 1.1. "bash arquivo.sh" vs. "source arquivo.sh"
+# (https://superuser.com/a/176788/42896)
+
+# Quando o arquivo de script é executado com "bash arquivo.sh",
+# (ou com "./arquivo.sh", caso tenha permissão de execução),
+# o valor do parâmetro $0 é o nome do arquivo.
+# (Neste caso é o valor de $ZZPATH que queremos)
+
+# A outra forma de executar o arquivo de script é usando "source arquivo.sh".
+# Nesta outra forma, o valor de $0 depende do tipo de shell sendo executado.
+
+# 1.2 login shell vs. non-login shell
+# Todo terminal (shell) é do tipo login shell, ou non-login shell.
+
+# O login shell ocorre a cada janela de terminal local aberta,
+# ou a cada conexão a um terminal remoto (ssh).
+# Neste caso, o valor de $0 é o nome do terminal, com hífen:
+# (i.e. "-bash", ou outro tipo de terminal (sh, etc.))
+# (detalhes em https://unix.stackexchange.com/a/128983/8632)
+
+# Quaisquer novos terminais abertos nestes terminais inicial são non-login.
+# (i.e. chamar "bash" em um prompt, ou "sudo su" etc.)
+# Neste caso, o valor de $0 após isto é o nome do terminal, sem hífen:
+# (i.e. "bash", etc.)
+
+# Então, precisamos identificar:
+# Se o valor de $0 é o nome do terminal,
+# ou
+# Se o valor de $0 é prefixado por hífen
+# (isto só acontece com o nome do terminal,
+# por isso não precisamos testar pelo nome do terminal novamente)
+
+# Se o valor for um desses, assumimos que já existe um $ZZPATH configurado.
+test "${0##*/}" = 'bash' -o "${0#-}" != "$0" ||
+  # Caso contrário, bingo, é o $ZZPATH q queremos
+  ZZPATH="$0"
+# 2. Se a variável $ZZPATH não foi inicializada, usamos um valor padrão.
 test -n "$ZZPATH" || ZZPATH=$ZZPATH_DFT
+# 3. Finalmente, força que ZZPATH seja uma rota absoluta.
 test "${ZZPATH#/}" = "$ZZPATH" && ZZPATH="$PWD/${ZZPATH#./}"
 
 test -d "${ZZPATH%/*}/zz" && ZZDIR="${ZZPATH%/*}/zz"
@@ -133,7 +168,7 @@ _extrai_ajuda() {
 }
 
 # Limpa conteúdo do arquivo de ajuda
-> "$ZZAJUDA"
+: > "$ZZAJUDA"
 
 # Salva o texto de ajuda das funções inclusas neste arquivo
 # (presentes na versão tudo-em-um)
@@ -155,8 +190,8 @@ test -r "$ZZPATH" && _extrai_ajuda "$ZZPATH" >> "$ZZAJUDA"
 ### Passo 1
 
 # Limpa arquivos temporários que guardam as listagens
-> "$ZZTMP.on"
-> "$ZZTMP.off"
+: > "$ZZTMP.on"
+: > "$ZZTMP.off"
 
 # Lista de funções a desligar: uma por linha, com prefixo zz
 zz_off=$(
@@ -252,6 +287,7 @@ do
 	test -r "$zz_arquivo" || continue
 
 	# Inclui a função na shell atual
+	# shellcheck disable=SC1090
 	. "$zz_arquivo"
 
 	# Extrai o texto de ajuda
@@ -272,6 +308,7 @@ echo '-------' | sed 's/.*/&&&&&&&&&&&/' >> "$ZZAJUDA"
 if test -z "$ZZDIR" -a -n "$zz_off"
 then
 	# Desliga todas em uma só linha (note que não usei aspas)
+	# shellcheck disable=SC2086
 	unset $zz_off
 
 	# Agora apaga os textos da ajuda, montando um script em sed e aplicando
